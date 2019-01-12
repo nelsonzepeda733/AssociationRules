@@ -1,0 +1,155 @@
+install.packages("installr", dependencies = TRUE)
+library(installr)
+updateR()
+
+
+#Cargando librerias
+#Libreria de reglas de asociación
+#install.packages("arules")
+library(arules)
+#Libreria para visualizaciones de reglas de asociación
+#install.packages("arulesViz")
+library(arulesViz)
+#instalando libreria tidyverse de usos multiples
+#install.packages("tidyverse")
+library(tidyverse)
+#Paquete para lectura de archivos XML
+#install.packages("readxml")
+install.packages("xml")
+install.packages("readxl")
+#libreria para manejo de Excel
+library(readxl)
+#Libreria para generación de reportes
+#install.packages("knitr")
+library(knitr)
+#libreria para graficos
+library(ggplot2)
+#Libreria para manejo de fechas
+#install.packages("lubridate")
+library(lubridate)
+#Paquete para hacer analisis y split de la data
+#install.packages("plyr")
+library(plyr)
+library(dplyr)
+
+#Lectura de excel y carga en un Dataframe
+retail <- read_excel('C:/Users/Nelson/Desktop/Curso Machine Learning/AFPCrecer/CursoEstudio/AnalisisCanasta/Ejercicios/Online_Retail.xlsx')
+#Extracción de filas que no tienen errores en la data.
+retail <- retail[complete.cases(retail), ]
+#mutate es una funcion de dplyr para agregar nuevas columnas o bien editarlas como por ejemplo convertirla en factores
+
+retail %>% mutate(Description = as.factor(Description))
+
+retail %>% mutate(Country = as.factor(Country))
+
+#Convirtiendo datos de fechas a fechas 
+retail$Date <- as.Date(retail$InvoiceDate)
+#Extracción de la hora
+TransTime<- format(retail$InvoiceDate,"%H:%M:%S")
+
+#Conversión del numero de la factura a numero
+InvoiceNo <- as.numeric(as.character(retail$InvoiceNo))
+
+#NAs introduced by coercion
+
+#Union por columnas 
+cbind(retail,TransTime)
+
+cbind(retail,InvoiceNo)
+
+#Revisando los datos con una vista rapida
+glimpse(retail)
+
+library(plyr)
+#Obteniendo un dataframe de transacciones
+transactionData <- ddply(retail,c("InvoiceNo","Date"),
+                       function(df1)paste(df1$Description,
+                       collapse = ","))
+#Concatenando vectores y renombrando la columna a Items
+transactionData
+
+transactionData$InvoiceNo <- NULL
+
+transactionData$Date <- NULL
+colnames(transactionData) <- c("items")
+#Mostrando las transformaciones
+transactionData
+
+Guardando archivo de insumo para analisis de canasta
+write.csv(transactionData,"C:/Users/Nelson/Desktop/Curso Machine Learning/AFPCrecer/CursoEstudio/AnalisisCanasta/Ejercicios/market_basket_transactions.csv", quote = FALSE, row.names = TRUE)
+
+
+
+
+library("arules")
+tr <- read.transactions('C:/Users/Nelson/Desktop/Curso Machine Learning/AFPCrecer/CursoEstudio/AnalisisCanasta/Ejercicios/market_basket_transactions.csv', format = 'basket', sep=',')
+#sep tell how items are separated. In this case you have separated using ','
+
+#   `trObj<-as(dataframe.dat,"transactions")`
+   tr
+summary(tr)
+
+
+#Top 20 de productos en base a su frecuencia de aparicion
+if (!require("RColorBrewer")) {
+  # install color package of R
+install.packages("RColorBrewer")
+#include library RColorBrewer
+library(RColorBrewer)
+}
+itemFrequencyPlot(tr,topN=20,type="absolute",col=brewer.pal(8,'Pastel2'), main="Absolute Item Frequency Plot")
+
+
+itemFrequencyPlot(tr,topN=20,type="relative",col=brewer.pal(8,'Pastel2'),main="Relative Item Frequency Plot")
+
+# Ejecución del modelo con Min Support as 0.001, confidence as 0.8.
+
+#Parametros
+#support: soporte mínimo que debe tener un itemset para ser considerado frecuente. Por defecto es 0.1.
+#minlen: número mínimo de items que debe tener un itemset para ser incluido en los resultados. Por defecto 1.
+#maxlen: número máximo de items que puede tener un itemset para ser incluido en los resultados. Por defecto 10.
+#target: tipo de resultados que debe de generar el algoritmo, pueden ser “frequent itemsets”, “maximally frequent itemsets”, “closed frequent itemsets”, “rules” o “hyperedgesets”.
+#confidence: confianza mínima que debe de tener una regla para ser incluida en los resultados. Por defecto 0.8.
+#maxtime: tiempo máximo que puede estar el algoritmo buscando subsets. Por defecto 5 segundos.
+
+association.rules <- apriori(tr, parameter = list(supp=0.001, conf=0.8,maxlen=10))
+
+#Inspeccionando el top 10 de las reglas
+inspect(association.rules[1:10])   
+
+#Limitando la cantidad de Items para construir reglas
+shorter.association.rules <- apriori(tr, parameter = list(supp=0.001, conf=0.8,maxlen=3))
+
+#Removiendo/Podando las reglas redundantes por medio de la identificación de subsets
+subset.rules <- which(colSums(is.subset(association.rules, association.rules)) > 1) # get subset rules in vector
+length(subset.rules)  
+subset.association.rules. <- association.rules[-subset.rules] # removiendo el subset.
+
+#¿Que es lo que un cliente compra antes de comprar metal?
+metal.association.rules <- apriori(tr, parameter = list(supp=0.001, conf=0.8),appearance = list(default="lhs",rhs="METAL"))
+inspect(head(metal.association.rules))
+
+#Para medir similaridad ... y poder responder: los clientes que compraron Metal tambien compraron...
+metal.association.rules <- apriori(tr, parameter = list(supp=0.001, conf=0.8),appearance = list(lhs="METAL",default="rhs"))
+inspect(head(metal.association.rules))
+
+
+#Visualización de las reglas de asociacion
+# Filtrando reglas cuyo valor confidence sea mayor al 40%
+subRules<-association.rules[quality(association.rules)$confidence>0.4]
+
+library(arulesViz)
+plot(subRules)
+
+plot(subRules,method="two-key plot")
+
+plotly_arules(subRules)
+
+top10subRules <- head(subRules, n = 10, by = "confidence")
+
+plot(top10subRules, method = "graph",  engine = "htmlwidget")
+
+saveAsGraph(head(subRules, n = 1000, by = "lift"), file = "rules.graphml")
+
+subRules2<-head(subRules, n=20, by="lift")
+plot(subRules2, method="paracoord")
